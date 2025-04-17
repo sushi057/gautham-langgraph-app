@@ -70,17 +70,29 @@ const updatePrice = tool(
 
       if (response.status >= 200 && response.status < 300) {
         console.log(" > Price update successful.");
-        return true;
+        return {
+          success: true,
+          message: "Price update successful",
+          details: response.data,
+        };
       } else {
         console.error(` > Price update failed with status: ${response.status}`);
-        return false;
+        return {
+          success: false,
+          message: `Price update failed with status: ${response.status}`,
+          details: response.data,
+        };
       }
     } catch (error: any) {
       console.error(
         " > Error during price update:",
         error.response?.data || error.message
       );
-      return false;
+      return {
+        success: false,
+        error: error.response?.data || error.message,
+        details: "Price update operation failed",
+      };
     }
   },
   {
@@ -127,19 +139,31 @@ const createNewProductVersion = tool(
 
       if (response.status >= 200 && response.status < 300) {
         console.log(" > New version creation successful.");
-        return true;
+        return {
+          success: true,
+          message: "New version creation successful",
+          details: response.data,
+        };
       } else {
         console.error(
           ` > New version creation failed with status: ${response.status}`
         );
-        return false;
+        return {
+          success: false,
+          message: `New version creation failed with status: ${response.status}`,
+          details: response.data,
+        };
       }
     } catch (error: any) {
       console.error(
         " > Error during version creation:",
         error.response?.data || error.message
       );
-      return false;
+      return {
+        success: false,
+        error: error.response?.data || error.message,
+        details: "Version creation operation failed",
+      };
     }
   },
   {

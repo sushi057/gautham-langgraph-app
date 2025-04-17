@@ -304,18 +304,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ isOpen, onClose }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-          {filteredMessages.length === 0 ? (
+          {filteredMessages.filter((msg) => msg.type !== "tool").length ===
+          0 ? (
             <div className="text-center text-gray-500 py-8">
               <p>Start a conversation with the assistant.</p>
             </div>
           ) : (
-            filteredMessages.map((message) => (
-              <MessageDiv
-                key={message.id}
-                text={message.content as string}
-                sender={message.type}
-              />
-            ))
+            filteredMessages
+              .filter((message) => message.type !== "tool")
+              .map((message) => (
+                <MessageDiv
+                  key={message.id}
+                  text={message.content as string}
+                  sender={message.type}
+                />
+              ))
           )}
 
           {/* Render UI Components */}

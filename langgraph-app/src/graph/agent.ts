@@ -3,6 +3,7 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import * as dotenv from "dotenv";
 import { apiTools } from "./tools.js";
 import { DynamicTool } from "@langchain/core/tools";
+import { PriceModificationProps } from "../types.js";
 
 dotenv.config();
 
@@ -19,8 +20,46 @@ const extractPriceModificationParams = new DynamicTool({
     "Extract parameters for price modification from user input. Return a properly formatted JSON structure with a UI_ACTION field to signal form prefilling.",
   func: async (input: string) => {
     try {
-      // Just return an empty string - the actual extraction happens in the LLM
-      return "";
+      const extractionPrompt = `
+        Extract the following parameters for a price modification from the user input:
+        - productId: The ID of the product (e.g., 1094110)
+        - priceId: The ID of the price (e.g., PRC9242016851)
+        - newPrice: The new price value (as a number)
+        - rolloverDate: The date when the price change should take effect (in YYYY-MM-DD format)
+        - projectId: Optional project ID (e.g., PLM2502-934)
+
+        User input: "${input}"
+
+        Return ONLY a JSON object with these fields. For missing fields, use null or empty string. Format dates as YYYY-MM-DD.
+        Example: 
+        {
+          "productId": "1094110",
+          "priceId": "PRC9242016851",
+          "newPrice": 40,
+          "rolloverDate": "2023-12-01",
+          "projectId": "PLM2502-934"
+        }
+      `;
+
+      const extractionModel = new ChatOpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+        model: "gpt-3.5-turbo",
+        temperature: 0,
+      });
+
+      const extractionResponse = await extractionModel.invoke(extractionPrompt);
+      const extractedContent = extractionResponse.content;
+
+      // Format as UI_DATA for the frontend
+      try {
+        const parsedData = JSON.parse(extractedContent as string);
+        return `UI_DATA:{"type":"prefill_price_form","data":${JSON.stringify(
+          parsedData
+        )}}`;
+      } catch (e) {
+        console.error("Failed to parse extracted parameters:", e);
+        return "Failed to extract parameters. Please try again with more specific information.";
+      }
     } catch (error) {
       console.error("Error in extraction:", error);
       return "";
@@ -33,8 +72,47 @@ const extractNewVersionParams = new DynamicTool({
   description:
     "Extract parameters for creating new product version from user input. Return a properly formatted JSON structure with a UI_ACTION field to signal form prefilling.",
   func: async (input: string) => {
-    // Just return an empty string - the actual extraction happens in the LLM
-    return "";
+    try {
+      const extractionPrompt = `
+        Extract the following parameters for a new product version from the user input:
+        - productId: The ID of the product
+        - rolloverDate: The date when the new version should become effective (in YYYY-MM-DD format)
+        - projectId: Optional project ID
+
+        User input: "${input}"
+
+        Return ONLY a JSON object with these fields. For missing fields, use null or empty string. Format dates as YYYY-MM-DD.
+        Example: 
+        {
+          "productId": "1094110",
+          "rolloverDate": "2023-12-01",
+          "projectId": "PLM2502-934"
+        }
+      `;
+
+      const extractionModel = new ChatOpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+        model: "gpt-3.5-turbo",
+        temperature: 0,
+      });
+
+      const extractionResponse = await extractionModel.invoke(extractionPrompt);
+      const extractedContent = extractionResponse.content;
+
+      // Format as UI_DATA for the frontend
+      try {
+        const parsedData = JSON.parse(extractedContent as string);
+        return `UI_DATA:{"type":"prefill_version_form","data":${JSON.stringify(
+          parsedData
+        )}}`;
+      } catch (e) {
+        console.error("Failed to parse extracted parameters:", e);
+        return "Failed to extract parameters. Please try again with more specific information.";
+      }
+    } catch (error) {
+      console.error("Error in extraction:", error);
+      return "";
+    }
   },
 });
 

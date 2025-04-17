@@ -10,6 +10,56 @@ export const detectUIComponents = async (
   // Default date as today in YYYY-MM-DD format
   const defaultDate = new Date().toISOString().split("T")[0];
 
+  // Check for UI_DATA in content first (for direct form prefilling)
+  const uiDataMatch = content.match(/UI_DATA:(\{.*\})/s);
+  if (uiDataMatch && uiDataMatch[1]) {
+    try {
+      const uiData = JSON.parse(uiDataMatch[1]);
+
+      if (uiData.type === "prefill_price_form" && uiData.data) {
+        return {
+          type: "priceModificationForm",
+          id: uuidv4(),
+          createdAt: Date.now(),
+          props: {
+            productId: uiData.data.productId || "",
+            priceId: uiData.data.priceId || "",
+            newPrice: uiData.data.newPrice
+              ? Number(uiData.data.newPrice)
+              : undefined,
+            rolloverDate: uiData.data.rolloverDate || defaultDate,
+            projectId: uiData.data.projectId || "",
+            catalogName: uiData.data.catalogName || "B2CCatalog",
+          },
+        };
+      } else if (uiData.type === "prefill_version_form" && uiData.data) {
+        return {
+          type: "newVersionForm",
+          id: uuidv4(),
+          createdAt: Date.now(),
+          props: {
+            productId: uiData.data.productId || "",
+            rolloverDate: uiData.data.rolloverDate || defaultDate,
+            projectId: uiData.data.projectId || "",
+            displayName: [
+              {
+                text: `Version for ${uiData.data.productId || "Product"}`,
+                language: "en-xx",
+              },
+              {
+                text: `Version for ${uiData.data.productId || "Product"}`,
+                language: "ar-xx",
+              },
+            ],
+          },
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error("Error parsing UI_DATA:", error);
+    }
+  }
+
   try {
     // Call OpenAI API to detect intent
     // Import environment configuration
@@ -59,30 +109,140 @@ export const detectUIComponents = async (
 
     // Return appropriate component based on detected intent
     if (intent === "PRICE_MODIFICATION") {
+      // Also try to extract parameters from content using OpenAI
+      const extractResponse = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-3.5-turbo",
+            messages: [
+              {
+                role: "system",
+                content: `Extract price modification parameters from the user message.
+                        Return a JSON object with these fields:
+                        - productId (string)
+                        - priceId (string)
+                        - newPrice (number)
+                        - rolloverDate (string in YYYY-MM-DD format)
+                        - projectId (string, optional)
+                        For missing values, use empty strings or null.`,
+              },
+              {
+                role: "user",
+                content: content,
+              },
+            ],
+            temperature: 0,
+            max_tokens: 200,
+          }),
+        }
+      );
+
+      let extractedParams = {
+        productId: "",
+        priceId: "",
+        newPrice: undefined as number | undefined,
+        rolloverDate: defaultDate,
+        projectId: "",
+      };
+
+      if (extractResponse.ok) {
+        try {
+          const extractData = await extractResponse.json();
+          const extractedText = extractData.choices[0]?.message?.content;
+          if (extractedText) {
+            const parsed = JSON.parse(extractedText);
+            extractedParams = {
+              ...extractedParams,
+              ...parsed,
+            };
+          }
+        } catch (e) {
+          console.error("Failed to parse extracted parameters:", e);
+        }
+      }
+
       return {
         type: "priceModificationForm",
         id: uuidv4(),
         createdAt: Date.now(),
-        props: {
-          productId: "",
-          priceId: "",
-          newPrice: undefined,
-          rolloverDate: defaultDate,
-          projectId: "",
-        },
+        props: extractedParams,
       };
     } else if (intent === "NEW_VERSION") {
+      // Also try to extract parameters for new version
+      const extractResponse = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-3.5-turbo",
+            messages: [
+              {
+                role: "system",
+                content: `Extract new product version parameters from the user message.
+                        Return a JSON object with these fields:
+                        - productId (string)
+                        - rolloverDate (string in YYYY-MM-DD format)
+                        - projectId (string, optional)
+                        For missing values, use empty strings or null.`,
+              },
+              {
+                role: "user",
+                content: content,
+              },
+            ],
+            temperature: 0,
+            max_tokens: 200,
+          }),
+        }
+      );
+
+      let extractedParams = {
+        productId: "",
+        rolloverDate: defaultDate,
+        projectId: "",
+      };
+
+      if (extractResponse.ok) {
+        try {
+          const extractData = await extractResponse.json();
+          const extractedText = extractData.choices[0]?.message?.content;
+          if (extractedText) {
+            const parsed = JSON.parse(extractedText);
+            extractedParams = {
+              ...extractedParams,
+              ...parsed,
+            };
+          }
+        } catch (e) {
+          console.error("Failed to parse extracted parameters:", e);
+        }
+      }
+
       return {
         type: "newVersionForm",
         id: uuidv4(),
         createdAt: Date.now(),
         props: {
-          productId: "",
-          rolloverDate: defaultDate,
-          projectId: "",
+          ...extractedParams,
           displayName: [
-            { text: "New Product Version", language: "en-xx" },
-            { text: "New Product Version", language: "ar-xx" },
+            {
+              text: `Version for ${extractedParams.productId || "Product"}`,
+              language: "en-xx",
+            },
+            {
+              text: `Version for ${extractedParams.productId || "Product"}`,
+              language: "ar-xx",
+            },
           ],
         },
       };
